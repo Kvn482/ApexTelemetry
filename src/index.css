@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #090d16;
+    --bg-surface: #0e1526;
+    --bg-card: #131c31;
+    --bg-card-hover: #18243e;
+    --border-subtle: #1e293b;
+    --border-highlight: #334155;
+    --telemetry-cyan: #06b6d4;
+    --telemetry-green: #00e59b;
+    --telemetry-red: #ef4444;
+    --telemetry-amber: #f59e0b;
+    --telemetry-purple: #a855f7;
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-main);
+    color: #f1f5f9;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* Custom subtle scrollbars for high-density telemetry views */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #090d16;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+  }
+}
+
+/* Monospace telemetry display */
+.telemetry-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* Optimization for dense telemetry/data grids (Modern Web Guidance) */
+.telemetry-containment {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+}
+
+/* Glowing accent effects for active telemetry states */
+.glow-cyan {
+  box-shadow: 0 0 15px -3px rgba(6, 182, 212, 0.3);
+}
+
+.glow-green {
+  box-shadow: 0 0 15px -3px rgba(0, 229, 155, 0.3);
+}
