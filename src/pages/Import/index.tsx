@@ -15,7 +15,7 @@ import { SessionService } from '../../services/sessionService';
 import { TrackService } from '../../services/trackService';
 import { CarService } from '../../services/carService';
 import { SAMPLE_SEBRING_CSV } from '../../data/sampleCsv';
-import { ColumnMapping, TelemetryPoint } from '../../types';
+import { ColumnMapping, TelemetryPoint, Lap } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { formatLapTime } from '../../utils/formatters';
 
@@ -49,6 +49,7 @@ export const ImportPage: React.FC = () => {
 
   const [importedPoints, setImportedPoints] = useState<TelemetryPoint[] | null>(null);
   const [detectedFormat, setDetectedFormat] = useState<string>('Standard CSV');
+  const [parsedMetadata, setParsedMetadata] = useState<Record<string, any>>({});
 
   const matchTrackFromName = (name?: string) => {
     if (!name) return;
@@ -76,11 +77,15 @@ export const ImportPage: React.FC = () => {
 
     setHeaders(parsed.headers);
     setRows(parsed.rows);
+    setParsedMetadata(parsed.metadata);
     setDetectedFormat(parsed.fileType === 'motec_csv' ? 'MoTeC i2 CSV Export' : 'Standard CSV');
 
-    // Auto-select Track & Car if MoTeC metadata exists
+    // Auto-select Track & Car from metadata or filename
     if (parsed.metadata.venue) matchTrackFromName(parsed.metadata.venue);
+    else matchTrackFromName(name);
+
     if (parsed.metadata.vehicle) matchCarFromName(parsed.metadata.vehicle);
+    else matchCarFromName(name);
 
     // Auto-detect columns
     const detected = TelemetryParser.autoDetectMapping(parsed.headers);
@@ -174,7 +179,96 @@ export const ImportPage: React.FC = () => {
     }
 
     const lastPoint = normalized[normalized.length - 1];
-    const lapTime = lastPoint?.time || 104.102;
+    const rawTotalTime = lastPoint?.time || 104.102;
+
+    let laps: Lap[] = [];
+    let bestLapTime = rawTotalTime;
+    let avgLapTime = rawTotalTime;
+
+    const beacons: number[] | undefined = parsedMetadata.beaconMarkers;
+    if (beacons && beacons.length > 0 && normalized.length > 50) {
+      const totalTime = normalized[normalized.length - 1].time;
+      const boundaries = [0, ...beacons];
+      if (totalTime > beacons[beacons.length - 1] + 20) {
+        boundaries.push(totalTime);
+      }
+
+      let minLap = Infinity;
+      for (let l = 0; l < boundaries.length - 1; l++) {
+        const startT = boundaries[l];
+        const endT = boundaries[l + 1];
+        const duration = parseFloat((endT - startT).toFixed(3));
+        if (duration < 30) continue;
+
+        const lapPts = normalized
+          .filter(p => p.time >= startT && p.time <= endT)
+          .map(p => ({
+            ...p,
+            time: parseFloat((p.time - startT).toFixed(3)),
+          }));
+
+        const startDist = lapPts[0]?.distance || 0;
+        const rebasedPts = lapPts.map(p => ({
+          ...p,
+          distance: Math.max(0, p.distance - startDist),
+        }));
+
+        if (duration < minLap) minLap = duration;
+
+        laps.push({
+          id: `imported-lap-${l + 1}`,
+          lapNumber: l + 1,
+          lapTime: duration,
+          formattedTime: formatLapTime(duration),
+          delta: 0,
+          topSpeed: rebasedPts.length ? Math.max(...rebasedPts.map(p => p.speed)) : 220,
+          avgSpeed: rebasedPts.length && duration > 0 ? Math.round((rebasedPts[rebasedPts.length - 1].distance / duration) * 3.6) : 160,
+          isValid: true,
+          sectors: [
+            { sectorNumber: 1, time: parseFloat((duration * 0.33).toFixed(3)) },
+            { sectorNumber: 2, time: parseFloat((duration * 0.37).toFixed(3)) },
+            { sectorNumber: 3, time: parseFloat((duration * 0.30).toFixed(3)) },
+          ],
+          telemetry: rebasedPts.length > 0 ? rebasedPts : normalized,
+        });
+      }
+
+      if (laps.length > 0) {
+        bestLapTime = minLap;
+        avgLapTime = parseFloat((laps.reduce((acc, l) => acc + l.lapTime, 0) / laps.length).toFixed(3));
+        laps.forEach(l => {
+          l.delta = parseFloat((l.lapTime - bestLapTime).toFixed(3));
+          if (l.lapTime === bestLapTime) {
+            l.isSessionBest = true;
+            l.isPersonalBest = true;
+          }
+        });
+      }
+    }
+
+    if (laps.length === 0) {
+      laps = [
+        {
+          id: 'imported-lap-1',
+          lapNumber: 1,
+          lapTime: rawTotalTime,
+          formattedTime: formatLapTime(rawTotalTime),
+          delta: 0,
+          topSpeed: Math.max(...normalized.map(p => p.speed)),
+          avgSpeed: Math.round(
+            (normalized[normalized.length - 1].distance / rawTotalTime) * 3.6
+          ),
+          isValid: true,
+          isSessionBest: true,
+          sectors: [
+            { sectorNumber: 1, time: parseFloat((rawTotalTime * 0.33).toFixed(3)) },
+            { sectorNumber: 2, time: parseFloat((rawTotalTime * 0.37).toFixed(3)) },
+            { sectorNumber: 3, time: parseFloat((rawTotalTime * 0.30).toFixed(3)) },
+          ],
+          telemetry: normalized,
+        },
+      ];
+    }
 
     const newSession = SessionService.create({
       trackId,
@@ -182,42 +276,25 @@ export const ImportPage: React.FC = () => {
       driverId: 'driver-kevin',
       date: new Date().toISOString(),
       type: sessionType,
-      bestLapTime: lapTime,
-      avgLapTime: parseFloat((lapTime + 0.5).toFixed(3)),
-      totalLaps: 1,
-      drivingTimeMinutes: Math.round(lapTime / 60) + 1,
+      bestLapTime,
+      avgLapTime,
+      totalLaps: laps.length,
+      drivingTimeMinutes: Math.max(1, Math.round(rawTotalTime / 60)),
       conditions: {
-        airTemp: 26,
-        trackTemp: 40,
+        airTemp: 24,
+        trackTemp: 38,
         weather: 'Sunny',
         gripLevel: 98,
         windSpeed: 10,
       },
-      notes: `Imported from CSV file: ${fileName} (${normalized.length} telemetry points logged)`,
-      laps: [
-        {
-          id: 'imported-lap-1',
-          lapNumber: 1,
-          lapTime,
-          formattedTime: formatLapTime(lapTime),
-          delta: 0,
-          topSpeed: Math.max(...normalized.map(p => p.speed)),
-          avgSpeed: Math.round(
-            (normalized[normalized.length - 1].distance / lapTime) * 3.6
-          ),
-          isValid: true,
-          isSessionBest: true,
-          sectors: [
-            { sectorNumber: 1, time: parseFloat((lapTime * 0.33).toFixed(3)) },
-            { sectorNumber: 2, time: parseFloat((lapTime * 0.37).toFixed(3)) },
-            { sectorNumber: 3, time: parseFloat((lapTime * 0.30).toFixed(3)) },
-          ],
-          telemetry: normalized,
-        },
-      ],
+      notes: `Imported from CSV file: ${fileName} (${normalized.length} points, ${laps.length} laps logged)`,
+      laps,
     });
 
-    navigate(`/analysis?sessionId=${newSession.id}&lapNumber=1`);
+    const bestLapIdx = laps.findIndex(l => l.lapTime === bestLapTime);
+    const targetLapNumber = bestLapIdx >= 0 ? laps[bestLapIdx].lapNumber : 1;
+
+    navigate(`/analysis?sessionId=${newSession.id}&lapNumber=${targetLapNumber}`);
   };
 
   return (

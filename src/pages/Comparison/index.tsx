@@ -18,9 +18,7 @@ import { CarService } from '../../services/carService';
 import { getLapTelemetry } from '../../services/telemetryService';
 import { ComparisonService } from '../../services/comparisonService';
 import { EngineerService } from '../../services/engineerService';
-import { DeltaChart } from '../../components/comparison/DeltaChart';
-import { SpeedComparisonChart } from '../../components/comparison/SpeedComparisonChart';
-import { PedalComparisonChart } from '../../components/comparison/PedalComparisonChart';
+import { ComparisonCharts } from '../../components/comparison/ComparisonCharts';
 import { EngineerInsightCard } from '../../components/engineer/EngineerInsightCard';
 import { TrackMap } from '../../components/telemetry/TrackMap';
 import { Badge } from '../../components/ui/Badge';
@@ -112,19 +110,25 @@ export const ComparisonPage: React.FC = () => {
     );
   }, [sessionB, lapBNum]);
 
-  // Generate telemetry for both laps
+  // Retrieve or generate telemetry for both laps
   const telemetryA = useMemo(() => {
+    if (lapA?.telemetry && lapA.telemetry.length > 0) {
+      return lapA.telemetry;
+    }
     return getLapTelemetry(trackA.id, lapA.lapTime, false, lapA.lapNumber * 0.1);
-  }, [trackA.id, lapA.lapTime, lapA.lapNumber]);
+  }, [trackA.id, lapA]);
 
   const telemetryB = useMemo(() => {
+    if (lapB?.telemetry && lapB.telemetry.length > 0) {
+      return lapB.telemetry;
+    }
     return getLapTelemetry(trackA.id, lapB.lapTime, true, lapB.lapNumber * 0.1);
-  }, [trackA.id, lapB.lapTime, lapB.lapNumber]);
+  }, [trackA.id, lapB]);
 
   // Align traces & calculate continuous delta
   const alignedComparison = useMemo(() => {
-    return ComparisonService.alignLaps(telemetryA, telemetryB);
-  }, [telemetryA, telemetryB]);
+    return ComparisonService.alignLaps(telemetryA, telemetryB, lapA.lapTime, lapB.lapTime);
+  }, [telemetryA, telemetryB, lapA.lapTime, lapB.lapTime]);
 
   // Deterministic Race Engineer Insights
   const engineerInsights = useMemo(() => {
@@ -339,26 +343,15 @@ export const ComparisonPage: React.FC = () => {
       {/* Row: Delta Continuous Chart & Track Map */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-8 space-y-4">
-          {/* Continuous Delta Chart */}
-          <DeltaChart
-            data={alignedComparison}
-            currentDistance={hoverDist}
-          />
-
-          {/* Speed Overlay Chart */}
-          <SpeedComparisonChart
+          {/* Comprehensive Comparison Charts Suite (Delta, Speed, Throttle, Brake, Gear, RPM, Steering) */}
+          <ComparisonCharts
             data={alignedComparison}
             labelA={`Lap ${lapA.lapNumber}`}
             labelB={`Ref Lap ${lapB.lapNumber}`}
+            overallDelta={totalDelta}
             currentDistance={hoverDist}
-          />
-
-          {/* Throttle and Brake Overlay */}
-          <PedalComparisonChart
-            data={alignedComparison}
-            labelA={`Lap ${lapA.lapNumber}`}
-            labelB={`Ref Lap ${lapB.lapNumber}`}
-            currentDistance={hoverDist}
+            onHoverDistance={(dist) => setHoverDist(dist)}
+            sectorBoundaries={trackA.sectorBoundaries}
           />
         </div>
 

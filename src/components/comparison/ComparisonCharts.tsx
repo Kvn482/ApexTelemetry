@@ -12,11 +12,14 @@ import {
   ReferenceArea,
 } from 'recharts';
 import { ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight, Info } from 'lucide-react';
-import { TelemetryPoint } from '../../types';
+import { ComparisonPoint } from '../../services/comparisonService';
 
-interface TelemetryChartsProps {
-  telemetry: TelemetryPoint[];
-  currentDistance: number;
+interface ComparisonChartsProps {
+  data: ComparisonPoint[];
+  labelA?: string;
+  labelB?: string;
+  overallDelta?: number;
+  currentDistance?: number;
   onHoverDistance?: (distance: number) => void;
   sectorBoundaries?: {
     sector1EndDist: number;
@@ -25,8 +28,11 @@ interface TelemetryChartsProps {
   className?: string;
 }
 
-export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
-  telemetry,
+export const ComparisonCharts: React.FC<ComparisonChartsProps> = ({
+  data,
+  labelA = 'Lap A',
+  labelB = 'Ref Lap B',
+  overallDelta,
   currentDistance,
   onHoverDistance,
   sectorBoundaries,
@@ -37,7 +43,7 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
   const [refAreaRight, setRefAreaRight] = useState<number | null>(null);
   const [isSelecting, setIsSelecting] = useState<boolean>(false);
 
-  const maxDist = telemetry && telemetry.length > 0 ? telemetry[telemetry.length - 1].distance : 5000;
+  const maxDist = data && data.length > 0 ? data[data.length - 1].distance : 5000;
   const activeDomain: [number, number] = zoomDomain || [0, maxDist];
 
   const handleMouseDown = useCallback((e: any) => {
@@ -54,7 +60,7 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
         setRefAreaRight(Number(e.activeLabel));
       }
       if (e && e.activePayload && e.activePayload.length > 0) {
-        const point = e.activePayload[0].payload as TelemetryPoint;
+        const point = e.activePayload[0].payload as ComparisonPoint;
         if (point && onHoverDistance) {
           onHoverDistance(point.distance);
         }
@@ -153,7 +159,7 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
       const zoomFactor = e.deltaY > 0 ? 1.25 : 0.8;
       const [curLeft, curRight] = activeDomain;
       const span = curRight - curLeft;
-      const center = currentDistance >= curLeft && currentDistance <= curRight
+      const center = currentDistance !== undefined && currentDistance >= curLeft && currentDistance <= curRight
         ? currentDistance
         : (curLeft + curRight) / 2;
 
@@ -168,13 +174,16 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
     }
   };
 
-  if (!telemetry || telemetry.length === 0) {
+  if (!data || data.length === 0) {
     return (
       <div className="p-8 text-center text-slate-500 bg-[#0d1424] rounded-xl border border-slate-800">
-        No telemetry traces available for this lap.
+        No comparison telemetry traces available.
       </div>
     );
   }
+
+  const maxDelta = Math.max(...data.map(d => Math.abs(d.delta)), 0.5);
+  const finalDelta = overallDelta !== undefined ? overallDelta : (data[data.length - 1]?.delta ?? 0);
 
   return (
     <div
@@ -183,7 +192,7 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
     >
       {/* Zoom and Navigation Controls Bar */}
       <div className="bg-[#0b111e] rounded-xl border border-slate-800 p-2.5 px-3 flex flex-wrap items-center justify-between gap-3 shadow-md">
-        {/* Left: Zoom Window Status & Hint */}
+        {/* Left: Zoom Window Status & Legend */}
         <div className="flex items-center gap-2.5">
           {zoomDomain ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
@@ -199,9 +208,21 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
             </span>
           )}
 
+          {/* Quick Legend: Lap A (solid) vs Lap B (dashed gray) */}
+          <div className="flex items-center gap-3 text-xs pl-2 border-l border-slate-800">
+            <span className="flex items-center gap-1.5 font-semibold text-cyan-400">
+              <span className="w-3 h-0.5 bg-cyan-400" />
+              {labelA}
+            </span>
+            <span className="flex items-center gap-1.5 font-semibold text-slate-300">
+              <span className="w-3 h-0.5 bg-slate-300 border-b border-dashed border-slate-300" />
+              {labelB} (Ref)
+            </span>
+          </div>
+
           <span className="text-[11px] text-slate-400 hidden xl:flex items-center gap-1">
             <Info size={13} className="text-slate-400" />
-            Arrastra sobre cualquier gráfica para hacer zoom en una curva
+            Arrastra sobre cualquier gráfica para comparar esa curva
           </span>
         </div>
 
@@ -310,29 +331,126 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
         </div>
       </div>
 
-      {/* 1. Speed Chart */}
+      {/* 1. Time Delta Chart */}
       <div className="bg-[#0b111e] rounded-xl border border-slate-800 p-2.5 px-3 shadow-lg">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-sm bg-cyan-400" />
-            Speed (km/h)
-          </span>
-          <span className="text-xs text-slate-400 telemetry-mono">
-            Max: {Math.max(...telemetry.map(p => p.speed))} km/h
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-sm bg-purple-400" />
+              Time Delta (vs Reference Lap)
+            </span>
+            <span className="text-[11px] text-slate-400">
+              <span className="text-rose-400 font-semibold">+Slower</span> /{' '}
+              <span className="text-emerald-400 font-semibold">-Faster</span>
+            </span>
+          </div>
+          <span className="text-xs font-mono text-slate-300">
+            Finish Delta:{' '}
+            <strong className={finalDelta > 0 ? 'text-rose-400' : 'text-emerald-400'}>
+              {finalDelta > 0 ? '+' : ''}
+              {finalDelta.toFixed(3)}s
+            </strong>
           </span>
         </div>
-        <div className="h-32 w-full cursor-crosshair">
+        <div className="h-28 w-full cursor-crosshair">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
-              data={telemetry}
-              syncId="apexTelemetrySync"
+              data={data}
+              syncId="apexComparisonSync"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               margin={{ top: 5, right: 20, left: -20, bottom: 0 }}
             >
               <defs>
-                <linearGradient id="singleSpeedGrad" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="compDeltaColor" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#c084fc" stopOpacity={0.4} />
+                  <stop offset="90%" stopColor="#c084fc" stopOpacity={0.06} />
+                  <stop offset="100%" stopColor="#c084fc" stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="distance"
+                type="number"
+                domain={activeDomain}
+                allowDataOverflow
+                hide
+              />
+              <YAxis
+                domain={[-maxDelta, maxDelta]}
+                stroke="#475569"
+                tick={{ fontSize: 10, fill: '#64748b' }}
+                tickFormatter={(val: number) => `${val > 0 ? '+' : ''}${val.toFixed(2)}s`}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#0f172a',
+                  borderColor: '#334155',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                }}
+                formatter={(val: any) => [
+                  `${val > 0 ? '+' : ''}${parseFloat(val).toFixed(3)}s`,
+                  'Delta',
+                ]}
+                labelFormatter={(dist: any) => `Dist: ${dist}m`}
+              />
+              <ReferenceLine y={0} stroke="#64748b" strokeWidth={1} strokeDasharray="3 3" />
+              {currentDistance !== undefined && (
+                <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              )}
+              {refAreaLeft !== null && refAreaRight !== null && (
+                <ReferenceArea
+                  x1={refAreaLeft}
+                  x2={refAreaRight}
+                  stroke="#06b6d4"
+                  strokeOpacity={0.8}
+                  fill="#06b6d4"
+                  fillOpacity={0.18}
+                />
+              )}
+              <Area
+                type="linear"
+                dataKey="delta"
+                stroke="#c084fc"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#compDeltaColor)"
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 2. Speed Comparison Chart */}
+      <div className="bg-[#0b111e] rounded-xl border border-slate-800 p-2.5 px-3 shadow-lg">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-sm bg-cyan-400" />
+            Speed (km/h)
+          </span>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-cyan-400 font-mono">
+              {labelA}: {Math.max(...data.map(p => p.speedA))} km/h
+            </span>
+            <span className="text-slate-300 font-mono">
+              {labelB}: {Math.max(...data.map(p => p.speedB))} km/h
+            </span>
+          </div>
+        </div>
+        <div className="h-32 w-full cursor-crosshair">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={data}
+              syncId="apexComparisonSync"
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              margin={{ top: 5, right: 20, left: -20, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="compSpeedColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.35} />
                   <stop offset="85%" stopColor="#06b6d4" stopOpacity={0.06} />
                   <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.0} />
@@ -358,10 +476,15 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                   borderRadius: '8px',
                   fontSize: '11px',
                 }}
-                formatter={(val: any) => [`${val} km/h`, 'Speed']}
+                formatter={(val: any, name: any) => [
+                  `${val} km/h`,
+                  name === 'speedA' ? labelA : labelB,
+                ]}
                 labelFormatter={(dist: any) => `Dist: ${dist}m`}
               />
-              <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              {currentDistance !== undefined && (
+                <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              )}
               {refAreaLeft !== null && refAreaRight !== null && (
                 <ReferenceArea
                   x1={refAreaLeft}
@@ -372,13 +495,24 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                   fillOpacity={0.18}
                 />
               )}
+              {/* Primary Area with Gradient */}
               <Area
                 type="linear"
-                dataKey="speed"
+                dataKey="speedA"
                 stroke="#06b6d4"
                 strokeWidth={2}
                 fillOpacity={1}
-                fill="url(#singleSpeedGrad)"
+                fill="url(#compSpeedColor)"
+                dot={false}
+                isAnimationActive={false}
+              />
+              {/* Comparison Line rendered on TOP of Area fill so it is never obscured */}
+              <Line
+                type="linear"
+                dataKey="speedB"
+                stroke="#cbd5e1"
+                strokeWidth={1.75}
+                strokeDasharray="3 2"
                 dot={false}
                 isAnimationActive={false}
               />
@@ -387,27 +521,30 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
         </div>
       </div>
 
-      {/* 2. Throttle Chart (Separated) */}
+      {/* 3. Throttle Comparison Chart (Separated) */}
       <div className="bg-[#0b111e] rounded-xl border border-slate-800 p-2.5 px-3 shadow-lg">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
             Throttle (%)
           </span>
-          <span className="text-xs text-slate-400 telemetry-mono">0 - 100%</span>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-emerald-400 font-medium">{labelA} (solid)</span>
+            <span className="text-slate-300 font-medium">{labelB} (dashed)</span>
+          </div>
         </div>
         <div className="h-28 w-full cursor-crosshair">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
-              data={telemetry}
-              syncId="apexTelemetrySync"
+              data={data}
+              syncId="apexComparisonSync"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               margin={{ top: 5, right: 20, left: -20, bottom: 0 }}
             >
               <defs>
-                <linearGradient id="singleThrottleGrad" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="compThrottleColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#10b981" stopOpacity={0.42} />
                   <stop offset="85%" stopColor="#10b981" stopOpacity={0.08} />
                   <stop offset="100%" stopColor="#10b981" stopOpacity={0.0} />
@@ -433,10 +570,15 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                   borderRadius: '8px',
                   fontSize: '11px',
                 }}
-                formatter={(val: any) => [`${val}%`, 'Throttle']}
+                formatter={(val: any, name: any) => [
+                  `${val}%`,
+                  name === 'throttleA' ? `${labelA} Throttle` : `${labelB} Throttle`,
+                ]}
                 labelFormatter={(dist: any) => `Dist: ${dist}m`}
               />
-              <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              {currentDistance !== undefined && (
+                <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              )}
               {refAreaLeft !== null && refAreaRight !== null && (
                 <ReferenceArea
                   x1={refAreaLeft}
@@ -447,13 +589,24 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                   fillOpacity={0.18}
                 />
               )}
+              {/* Primary Area with Gradient */}
               <Area
                 type="linear"
-                dataKey="throttle"
+                dataKey="throttleA"
                 stroke="#10b981"
                 strokeWidth={2}
                 fillOpacity={1}
-                fill="url(#singleThrottleGrad)"
+                fill="url(#compThrottleColor)"
+                dot={false}
+                isAnimationActive={false}
+              />
+              {/* Comparison Line rendered on TOP */}
+              <Line
+                type="linear"
+                dataKey="throttleB"
+                stroke="#cbd5e1"
+                strokeWidth={1.75}
+                strokeDasharray="3 2"
                 dot={false}
                 isAnimationActive={false}
               />
@@ -462,27 +615,30 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
         </div>
       </div>
 
-      {/* 3. Brake Chart (Separated) */}
+      {/* 4. Brake Comparison Chart (Separated) */}
       <div className="bg-[#0b111e] rounded-xl border border-slate-800 p-2.5 px-3 shadow-lg">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-sm bg-rose-400" />
             Brake (%)
           </span>
-          <span className="text-xs text-slate-400 telemetry-mono">0 - 100%</span>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-rose-400 font-medium">{labelA} (solid)</span>
+            <span className="text-slate-300 font-medium">{labelB} (dashed)</span>
+          </div>
         </div>
         <div className="h-28 w-full cursor-crosshair">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
-              data={telemetry}
-              syncId="apexTelemetrySync"
+              data={data}
+              syncId="apexComparisonSync"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               margin={{ top: 5, right: 20, left: -20, bottom: 0 }}
             >
               <defs>
-                <linearGradient id="singleBrakeGrad" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="compBrakeColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.42} />
                   <stop offset="85%" stopColor="#f43f5e" stopOpacity={0.08} />
                   <stop offset="100%" stopColor="#f43f5e" stopOpacity={0.0} />
@@ -508,10 +664,15 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                   borderRadius: '8px',
                   fontSize: '11px',
                 }}
-                formatter={(val: any) => [`${val}%`, 'Brake']}
+                formatter={(val: any, name: any) => [
+                  `${val}%`,
+                  name === 'brakeA' ? `${labelA} Brake` : `${labelB} Brake`,
+                ]}
                 labelFormatter={(dist: any) => `Dist: ${dist}m`}
               />
-              <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              {currentDistance !== undefined && (
+                <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              )}
               {refAreaLeft !== null && refAreaRight !== null && (
                 <ReferenceArea
                   x1={refAreaLeft}
@@ -522,13 +683,24 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                   fillOpacity={0.18}
                 />
               )}
+              {/* Primary Area with Gradient */}
               <Area
                 type="linear"
-                dataKey="brake"
+                dataKey="brakeA"
                 stroke="#f43f5e"
                 strokeWidth={2}
                 fillOpacity={1}
-                fill="url(#singleBrakeGrad)"
+                fill="url(#compBrakeColor)"
+                dot={false}
+                isAnimationActive={false}
+              />
+              {/* Comparison Line rendered on TOP */}
+              <Line
+                type="linear"
+                dataKey="brakeB"
+                stroke="#cbd5e1"
+                strokeWidth={1.75}
+                strokeDasharray="3 2"
                 dot={false}
                 isAnimationActive={false}
               />
@@ -537,27 +709,30 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
         </div>
       </div>
 
-      {/* 4. Gear Chart (Separated) */}
+      {/* 5. Gear Comparison Chart (Separated) */}
       <div className="bg-[#0b111e] rounded-xl border border-slate-800 p-2.5 px-3 shadow-lg">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-sm bg-amber-400" />
             Gear
           </span>
-          <span className="text-xs text-slate-400 telemetry-mono">Shift profile</span>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-amber-400 font-medium">{labelA} (solid)</span>
+            <span className="text-slate-300 font-medium">{labelB} (dashed)</span>
+          </div>
         </div>
         <div className="h-24 w-full cursor-crosshair">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
-              data={telemetry}
-              syncId="apexTelemetrySync"
+              data={data}
+              syncId="apexComparisonSync"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               margin={{ top: 5, right: 20, left: -20, bottom: 0 }}
             >
               <defs>
-                <linearGradient id="singleGearGrad" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="compGearColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.28} />
                   <stop offset="90%" stopColor="#f59e0b" stopOpacity={0.04} />
                   <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.0} />
@@ -583,10 +758,15 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                   borderRadius: '8px',
                   fontSize: '11px',
                 }}
-                formatter={(val: any) => [`Gear ${val}`, 'Gear']}
+                formatter={(val: any, name: any) => [
+                  `Gear ${val}`,
+                  name === 'gearA' ? `${labelA} Gear` : `${labelB} Gear`,
+                ]}
                 labelFormatter={(dist: any) => `Dist: ${dist}m`}
               />
-              <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              {currentDistance !== undefined && (
+                <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              )}
               {refAreaLeft !== null && refAreaRight !== null && (
                 <ReferenceArea
                   x1={refAreaLeft}
@@ -599,11 +779,20 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
               )}
               <Area
                 type="stepAfter"
-                dataKey="gear"
+                dataKey="gearA"
                 stroke="#f59e0b"
                 strokeWidth={2}
                 fillOpacity={1}
-                fill="url(#singleGearGrad)"
+                fill="url(#compGearColor)"
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                type="stepAfter"
+                dataKey="gearB"
+                stroke="#cbd5e1"
+                strokeWidth={1.75}
+                strokeDasharray="3 2"
                 dot={false}
                 isAnimationActive={false}
               />
@@ -612,29 +801,34 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
         </div>
       </div>
 
-      {/* 5. Engine RPM Chart (Separated) */}
+      {/* 6. Engine RPM Comparison Chart (Separated) */}
       <div className="bg-[#0b111e] rounded-xl border border-slate-800 p-2.5 px-3 shadow-lg">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-sm bg-sky-400" />
             Engine RPM
           </span>
-          <span className="text-xs text-slate-400 telemetry-mono">
-            Max: {Math.max(...telemetry.map(p => p.rpm))} RPM
-          </span>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-sky-400 font-mono">
+              {labelA}: {Math.max(...data.map(p => p.rpmA || 0))} RPM
+            </span>
+            <span className="text-slate-300 font-mono">
+              {labelB}: {Math.max(...data.map(p => p.rpmB || 0))} RPM
+            </span>
+          </div>
         </div>
         <div className="h-28 w-full cursor-crosshair">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
-              data={telemetry}
-              syncId="apexTelemetrySync"
+              data={data}
+              syncId="apexComparisonSync"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               margin={{ top: 5, right: 20, left: -20, bottom: 0 }}
             >
               <defs>
-                <linearGradient id="singleRpmGrad" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="compRpmColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.32} />
                   <stop offset="90%" stopColor="#38bdf8" stopOpacity={0.05} />
                   <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.0} />
@@ -660,10 +854,15 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                   borderRadius: '8px',
                   fontSize: '11px',
                 }}
-                formatter={(val: any) => [`${val} RPM`, 'RPM']}
+                formatter={(val: any, name: any) => [
+                  `${val} RPM`,
+                  name === 'rpmA' ? `${labelA} RPM` : `${labelB} RPM`,
+                ]}
                 labelFormatter={(dist: any) => `Dist: ${dist}m`}
               />
-              <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              {currentDistance !== undefined && (
+                <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              )}
               {refAreaLeft !== null && refAreaRight !== null && (
                 <ReferenceArea
                   x1={refAreaLeft}
@@ -676,11 +875,20 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
               )}
               <Area
                 type="linear"
-                dataKey="rpm"
+                dataKey="rpmA"
                 stroke="#38bdf8"
                 strokeWidth={1.75}
                 fillOpacity={1}
-                fill="url(#singleRpmGrad)"
+                fill="url(#compRpmColor)"
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                type="linear"
+                dataKey="rpmB"
+                stroke="#cbd5e1"
+                strokeWidth={1.5}
+                strokeDasharray="3 2"
                 dot={false}
                 isAnimationActive={false}
               />
@@ -689,22 +897,23 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
         </div>
       </div>
 
-      {/* 6. Steering Chart */}
+      {/* 7. Steering Comparison Chart */}
       <div className="bg-[#0b111e] rounded-xl border border-slate-800 p-2.5 px-3 shadow-lg">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-sm bg-purple-400" />
             Steering Angle (Deg)
           </span>
-          <span className="text-xs text-slate-400 telemetry-mono">
-            -Left / +Right
-          </span>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-purple-400 font-medium">{labelA} (solid)</span>
+            <span className="text-slate-300 font-medium">{labelB} (dashed)</span>
+          </div>
         </div>
         <div className="h-28 w-full cursor-crosshair">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
-              data={telemetry}
-              syncId="apexTelemetrySync"
+              data={data}
+              syncId="apexComparisonSync"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
@@ -732,11 +941,16 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
                   borderRadius: '8px',
                   fontSize: '11px',
                 }}
-                formatter={(val: any) => [`${val}°`, 'Steering']}
+                formatter={(val: any, name: any) => [
+                  `${val}°`,
+                  name === 'steeringA' ? `${labelA} Steering` : `${labelB} Steering`,
+                ]}
                 labelFormatter={(dist: any) => `Dist: ${dist}m`}
               />
               <ReferenceLine y={0} stroke="#334155" strokeDasharray="2 2" />
-              <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              {currentDistance !== undefined && (
+                <ReferenceLine x={currentDistance} stroke="#38bdf8" strokeWidth={1.5} />
+              )}
               {refAreaLeft !== null && refAreaRight !== null && (
                 <ReferenceArea
                   x1={refAreaLeft}
@@ -749,9 +963,18 @@ export const TelemetryCharts: React.FC<TelemetryChartsProps> = ({
               )}
               <Line
                 type="linear"
-                dataKey="steering"
+                dataKey="steeringA"
                 stroke="#c084fc"
                 strokeWidth={1.75}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                type="linear"
+                dataKey="steeringB"
+                stroke="#cbd5e1"
+                strokeWidth={1.5}
+                strokeDasharray="3 2"
                 dot={false}
                 isAnimationActive={false}
               />

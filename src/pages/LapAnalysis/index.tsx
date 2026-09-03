@@ -74,17 +74,26 @@ export const LapAnalysisPage: React.FC = () => {
     );
   }, [currentSession, selectedLapNum]);
 
-  // High density telemetry traces for this lap
+  // High density telemetry traces for this lap (use real imported data if present)
   const telemetry = useMemo(() => {
+    if (currentLap?.telemetry && currentLap.telemetry.length > 0) {
+      return currentLap.telemetry;
+    }
     return getLapTelemetry(
       track.id,
       currentLap.lapTime,
       currentLap.lapNumber === 7, // seed variance
       currentLap.lapNumber * 0.15
     );
-  }, [track.id, currentLap.lapTime, currentLap.lapNumber]);
+  }, [track.id, currentLap]);
 
-  const totalTrackDistance = track.lengthMeters;
+  const totalTrackDistance = useMemo(() => {
+    if (currentLap?.telemetry && currentLap.telemetry.length > 0) {
+      const endDist = currentLap.telemetry[currentLap.telemetry.length - 1].distance;
+      if (endDist > 500) return endDist;
+    }
+    return track.lengthMeters;
+  }, [currentLap, track.lengthMeters]);
 
   // Active telemetry point corresponding to currentTime
   const activePoint = useMemo(() => {
@@ -298,6 +307,7 @@ export const LapAnalysisPage: React.FC = () => {
           telemetry={telemetry}
           currentDistance={activePoint.distance}
           onHoverDistance={handleHoverDistance}
+          sectorBoundaries={track.sectorBoundaries}
         />
       </div>
     </div>

@@ -13,7 +13,7 @@ export const TelemetryHUD: React.FC<TelemetryHUDProps> = ({
   totalDistance,
   lapTimeSeconds,
 }) => {
-  const steeringPercent = Math.min(100, Math.max(-100, (point.steering / 90) * 100));
+  const steeringPercent = Math.min(100, Math.max(-100, (point.steering / 180) * 100));
 
   return (
     <div className="bg-[#0b111e] rounded-xl border border-slate-800 p-4 shadow-xl select-none">

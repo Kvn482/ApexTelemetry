@@ -85,9 +85,9 @@ export const SpeedComparisonChart: React.FC<SpeedComparisonChartProps> = ({
               isAnimationActive={false}
             />
             <Line
-              type="monotone"
+              type="linear"
               dataKey="speedB"
-              stroke="#f59e0b"
+              stroke="#94a3b8"
               strokeWidth={2}
               strokeDasharray="4 2"
               dot={false}

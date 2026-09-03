@@ -9,6 +9,7 @@ export interface ParsedTelemetryResult {
     logDate?: string;
     sampleRate?: number;
     comment?: string;
+    beaconMarkers?: number[];
   };
   headers: string[];
   rows: Record<string, string>[];
@@ -24,10 +25,30 @@ export class TelemetryParser {
     const metadata: ParsedTelemetryResult['metadata'] = {};
     let isMotecCsv = false;
 
-    // Check if the file starts with MoTeC metadata (e.g. "Format","MoTeC CSV File")
+    // Known metadata row prefixes in MoTeC CSV files
+    const metaKeywords = [
+      'format',
+      'venue',
+      'vehicle',
+      'driver',
+      'device',
+      'comment',
+      'log date',
+      'sample rate',
+      'duration',
+      'range',
+      'beacon markers',
+      'session',
+      'short comment',
+      'origin time',
+      'start distance',
+      'end distance',
+      'end time',
+    ];
+
     let headerLineIdx = 0;
 
-    for (let i = 0; i < Math.min(25, rawLines.length); i++) {
+    for (let i = 0; i < Math.min(80, rawLines.length); i++) {
       const line = rawLines[i].trim();
       if (!line) continue;
 
@@ -35,7 +56,6 @@ export class TelemetryParser {
         isMotecCsv = true;
       }
 
-      // Extract key-values from MoTeC metadata header
       if (isMotecCsv) {
         const parts = line.split(',').map(p => p.trim().replace(/^["']|["']$/g, ''));
         if (parts.length >= 2) {
@@ -47,13 +67,28 @@ export class TelemetryParser {
           if (key === 'log date') metadata.logDate = val;
           if (key === 'sample rate') metadata.sampleRate = parseFloat(val) || 20;
           if (key === 'comment') metadata.comment = val;
+          if (key.includes('beacon')) {
+            metadata.beaconMarkers = val
+              .split(/\s+/)
+              .map(v => parseFloat(v))
+              .filter(v => !isNaN(v));
+          }
         }
 
-        // Check if this line looks like the channel names header (has multiple comma separated channel names)
-        const possibleChannels = line.split(',');
-        if (possibleChannels.length >= 4 && (line.toLowerCase().includes('speed') || line.toLowerCase().includes('time') || line.toLowerCase().includes('throttle'))) {
-          headerLineIdx = i;
-          break;
+        const firstCol = parts[0].toLowerCase();
+        const isMetaLine = metaKeywords.some(kw => firstCol.startsWith(kw));
+
+        // The true channel headers line is NOT a metadata key line and contains multiple columns
+        if (!isMetaLine && parts.length >= 3) {
+          const lowerLine = line.toLowerCase();
+          const hasTelemetryChannels =
+            (lowerLine.includes('speed') || lowerLine.includes('spd') || lowerLine.includes('steer')) &&
+            (lowerLine.includes('time') || lowerLine.includes('dist') || lowerLine.includes('throttle') || lowerLine.includes('brake'));
+
+          if (hasTelemetryChannels || firstCol === 'time' || firstCol === 'distance') {
+            headerLineIdx = i;
+            break;
+          }
         }
       }
     }
@@ -73,8 +108,10 @@ export class TelemetryParser {
 
     // In MoTeC CSV, the line immediately following headers is usually the units row (e.g. "s","m","km/h","rpm")
     if (lines.length > 1) {
-      const secondLine = lines[1].toLowerCase();
-      if (secondLine.includes('km/h') || secondLine.includes('rpm') || secondLine.includes('%') || secondLine.includes('deg') || secondLine.includes('"s"') || secondLine.includes('"m"')) {
+      const secondLineParts = lines[1].split(',').map(p => p.trim().replace(/^["']|["']$/g, '').toLowerCase());
+      const knownUnits = ['s', 'm', 'km/h', 'mph', '%', 'deg', 'rpm', 'rad/s', 'kph', 'bar', 'psi', 'c', 'v'];
+      const isUnitsRow = secondLineParts.filter(p => knownUnits.includes(p)).length >= 2;
+      if (isUnitsRow) {
         dataStartLine = 2; // Skip units line
       }
     }
@@ -257,21 +294,73 @@ export class TelemetryParser {
   public static autoDetectMapping(headers: string[]): ColumnMapping {
     const findMatch = (patterns: RegExp[]): string => {
       for (const pattern of patterns) {
-        const found = headers.find(h => pattern.test(h));
+        const found = headers.find(h => pattern.test(h.trim()));
         if (found) return found;
       }
       return '';
     };
 
     return {
-      distance: findMatch([/^lap_?dist/i, /^distance/i, /^dist/i, /^corr_?dist/i, /^m$/i]),
-      time: findMatch([/^time_?elapsed/i, /^lap_?time/i, /^time/i, /^t$/i]),
-      speed: findMatch([/^ground_?speed/i, /^gps_?speed/i, /^speed_?kmh/i, /^speed/i, /^spd/i, /^velocity/i]),
-      rpm: findMatch([/^engine_?rpm/i, /^rpm/i, /^engine_?speed/i, /^revs/i]),
-      gear: findMatch([/^gear/i, /^gearpres/i, /^ngear/i]),
-      throttle: findMatch([/^throttle_?pos/i, /^throttle_?pct/i, /^throttle/i, /^pedal_?pos/i, /^gas/i, /^tps/i, /^accel/i]),
-      brake: findMatch([/^brake_?press/i, /^brake_?pos/i, /^brake_?pressure/i, /^brake_?pct/i, /^brake/i, /^brk/i]),
-      steering: findMatch([/^steering_?angle/i, /^steer_?angle/i, /^steer/i, /^steering/i, /^steer_?deg/i]),
+      distance: findMatch([
+        /^lap_?dist/i,
+        /^distance/i,
+        /^dist/i,
+        /^corr_?dist/i,
+        /^car_?dist/i,
+        /^m$/i,
+      ]),
+      time: findMatch([
+        /^time_?elapsed/i,
+        /^lap_?time/i,
+        /^time/i,
+        /^t$/i,
+      ]),
+      speed: findMatch([
+        /^ground_?speed/i,
+        /^gps_?speed/i,
+        /^speed_?kmh/i,
+        /^speed/i,
+        /^spd/i,
+        /^velocity/i,
+      ]),
+      rpm: findMatch([
+        /^engine_?rpm/i,
+        /^rpm_?engine/i,
+        /^rpm/i,
+        /^engine_?speed/i,
+        /^revs/i,
+      ]),
+      gear: findMatch([
+        /^gear/i,
+        /^gearpres/i,
+        /^ngear/i,
+      ]),
+      throttle: findMatch([
+        /^throttle_?pos/i,
+        /^throttle_?pct/i,
+        /^throttle/i,
+        /^pedal_?pos/i,
+        /^acc_?pedal/i,
+        /^gas/i,
+        /^tps/i,
+        /^accel/i,
+      ]),
+      brake: findMatch([
+        /^brake_?press/i,
+        /^brake_?pos/i,
+        /^brake_?pressure/i,
+        /^brake_?pct/i,
+        /^brake/i,
+        /^brk/i,
+      ]),
+      steering: findMatch([
+        /^steer_?angle/i,
+        /^steerangle/i,
+        /^steering_?angle/i,
+        /^steer/i,
+        /^steering/i,
+        /^steer_?deg/i,
+      ]),
     };
   }
 
@@ -279,7 +368,7 @@ export class TelemetryParser {
    * Validates if minimum required columns are mapped
    */
   public static validateMapping(mapping: ColumnMapping): { isValid: boolean; missingFields: string[] } {
-    const required: (keyof ColumnMapping)[] = ['distance', 'speed', 'throttle', 'brake'];
+    const required: (keyof ColumnMapping)[] = ['speed', 'throttle', 'brake'];
     const missing: string[] = [];
 
     required.forEach(field => {
@@ -287,6 +376,10 @@ export class TelemetryParser {
         missing.push(field);
       }
     });
+
+    if (!mapping.distance && !mapping.time) {
+      missing.push('distance or time');
+    }
 
     return {
       isValid: missing.length === 0,
@@ -300,20 +393,40 @@ export class TelemetryParser {
   public static normalize(
     rows: Record<string, string>[],
     mapping: ColumnMapping,
-    targetTrackLength?: number
+    _targetTrackLength?: number
   ): TelemetryPoint[] {
     const points: TelemetryPoint[] = [];
 
-    for (let i = 0; i < rows.length; i++) {
+    // If dataset is massive (e.g. 200 Hz full outing with 100,000+ rows),
+    // downsample to ~1200-1500 points so localStorage doesn't hit 5MB browser quota
+    // and Recharts can render smoothly at 60 FPS.
+    const maxPoints = 1500;
+    const stride = rows.length > maxPoints ? Math.ceil(rows.length / maxPoints) : 1;
+
+    let prevTime = 0;
+    let accumulatedDist = 0;
+
+    for (let i = 0; i < rows.length; i += stride) {
       const row = rows[i];
-      const dist = parseFloat(row[mapping.distance]) || (i * 20);
-      const time = parseFloat(row[mapping.time]) || (i * 0.35);
-      const speed = parseFloat(row[mapping.speed]) || 0;
-      const rpm = parseFloat(row[mapping.rpm]) || 6000;
-      const gear = parseInt(row[mapping.gear], 10) || (speed > 220 ? 5 : speed > 150 ? 4 : speed > 100 ? 3 : 2);
-      const throttle = Math.min(100, Math.max(0, parseFloat(row[mapping.throttle]) || 0));
-      const brake = Math.min(100, Math.max(0, parseFloat(row[mapping.brake]) || 0));
-      const steering = parseFloat(row[mapping.steering]) || 0;
+      const time = mapping.time && row[mapping.time] ? parseFloat(row[mapping.time]) : (i * 0.05);
+      const speed = mapping.speed && row[mapping.speed] ? parseFloat(row[mapping.speed]) : 0;
+
+      let dist = mapping.distance && row[mapping.distance] !== undefined && row[mapping.distance] !== ''
+        ? parseFloat(row[mapping.distance])
+        : NaN;
+
+      if (isNaN(dist)) {
+        const dt = Math.max(0, time - prevTime);
+        accumulatedDist += (speed / 3.6) * dt;
+        dist = accumulatedDist;
+      }
+      prevTime = time;
+
+      const rpm = mapping.rpm && row[mapping.rpm] ? parseFloat(row[mapping.rpm]) : 6000;
+      const gear = mapping.gear && row[mapping.gear] ? parseInt(row[mapping.gear], 10) : (speed > 220 ? 5 : speed > 150 ? 4 : speed > 100 ? 3 : 2);
+      const throttle = mapping.throttle && row[mapping.throttle] ? Math.min(100, Math.max(0, parseFloat(row[mapping.throttle]))) : 0;
+      const brake = mapping.brake && row[mapping.brake] ? Math.min(100, Math.max(0, parseFloat(row[mapping.brake]))) : 0;
+      const steering = mapping.steering && row[mapping.steering] ? parseFloat(row[mapping.steering]) : 0;
 
       points.push({
         distance: Math.round(dist),
@@ -326,9 +439,6 @@ export class TelemetryParser {
         steering: parseFloat(steering.toFixed(1)),
       });
     }
-
-    // Sort by distance
-    points.sort((a, b) => a.distance - b.distance);
 
     return points;
   }

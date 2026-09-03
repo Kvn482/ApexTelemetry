@@ -90,16 +90,16 @@ export const PedalComparisonChart: React.FC<PedalComparisonChartProps> = ({
               isAnimationActive={false}
             />
             <Line
-              type="monotone"
+              type="linear"
               dataKey="throttleB"
-              stroke="#059669"
+              stroke="#94a3b8"
               strokeWidth={1.75}
               strokeDasharray="3 3"
               dot={false}
               isAnimationActive={false}
             />
             <Line
-              type="monotone"
+              type="linear"
               dataKey="brakeA"
               stroke="#f43f5e"
               strokeWidth={2}
@@ -107,9 +107,9 @@ export const PedalComparisonChart: React.FC<PedalComparisonChartProps> = ({
               isAnimationActive={false}
             />
             <Line
-              type="monotone"
+              type="linear"
               dataKey="brakeB"
-              stroke="#e11d48"
+              stroke="#94a3b8"
               strokeWidth={1.75}
               strokeDasharray="3 3"
               dot={false}

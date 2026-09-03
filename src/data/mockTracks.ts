@@ -144,4 +144,31 @@ export const MOCK_TRACKS: Track[] = [
       { number: 19, name: 'Bus Stop Chicane', distance: 6750, x: 330, y: 410, type: 'chicane', suggestedGear: 1, targetApexSpeed: 75 },
     ],
   },
+  {
+    id: 'nurburgring',
+    name: 'Nürburgring (GP-Strecke)',
+    country: 'Germany',
+    flagCode: 'de',
+    lengthMeters: 5148,
+    turns: 16,
+    recordLapTime: 114.280, // 1:54.280
+    recordHolder: 'Mirko Bortolotti',
+    recordCar: 'Lamborghini Huracán GT3 Evo2',
+    viewBox: '0 0 800 500',
+    description: 'Iconic German Grand Prix circuit in the Eifel mountains, featuring the Castrol-S, the slow Dunlop Hairpin, and the high-speed Schumacher-S.',
+    sectorBoundaries: {
+      sector1EndDist: 1650,
+      sector2EndDist: 3450,
+    },
+    svgPath: 'M 220,400 L 160,350 C 130,320 120,280 140,240 L 190,190 C 230,150 280,140 330,170 L 420,220 C 460,240 510,240 550,210 L 620,160 C 670,120 730,130 750,180 C 770,230 740,290 690,320 L 580,380 C 530,410 470,410 420,380 L 350,340 C 310,320 270,340 250,380 Z',
+    corners: [
+      { number: 1, name: 'Castrol-S (T1)', distance: 350, x: 160, y: 350, type: 'hairpin', suggestedGear: 1, targetApexSpeed: 70 },
+      { number: 4, name: 'Mercedes-Arena', distance: 1100, x: 140, y: 240, type: 'chicane', suggestedGear: 2, targetApexSpeed: 95 },
+      { number: 7, name: 'Dunlop Hairpin', distance: 1950, x: 330, y: 170, type: 'hairpin', suggestedGear: 2, targetApexSpeed: 82 },
+      { number: 9, name: 'Schumacher-S', distance: 2750, x: 550, y: 210, type: 'sweeper', suggestedGear: 4, targetApexSpeed: 165 },
+      { number: 12, name: 'Bit-Kurve', distance: 3600, x: 750, y: 180, type: 'medium', suggestedGear: 3, targetApexSpeed: 125 },
+      { number: 15, name: 'NGK Schikane', distance: 4650, x: 580, y: 380, type: 'chicane', suggestedGear: 2, targetApexSpeed: 88 },
+      { number: 16, name: 'Coca-Cola Kurve', distance: 4950, x: 420, y: 380, type: 'medium', suggestedGear: 3, targetApexSpeed: 135 },
+    ],
+  },
 ];
